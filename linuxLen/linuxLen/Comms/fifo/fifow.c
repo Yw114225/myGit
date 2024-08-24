@@ -7,20 +7,20 @@
 
 int main(int argc, char* argv[])
 {
-    char rbuf[32];
-    int fd = open("./fifotest", O_RDONLY);
+    char wbuf[32] = {0};
+    int fifore = mkfifo("./fifotest", 0666);
+    if(!fifore){
+	perror("mkfifo");
+	return -1;
+    }
+    int fd = open("./fifotest", O_WRONLY);
     if(fd < 0){
 	perror("open");
 	return -1;
     }
     while(1){
-	memset(rbuf, 0, strlen(rbuf));
-	int re = read(fd, rbuf, 32);
-	if(re > 0)
-	    printf("read fifo = %s", rbuf);
-	else if(re == 0)
-	    return 0;
+	    fgets(wbuf, 32, stdin);
+	    write(fd, wbuf, strlen(wbuf));
     }
     return 0;
-
 }
