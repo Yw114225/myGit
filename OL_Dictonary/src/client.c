@@ -2,10 +2,12 @@
 
 MSG regester(int sockfd, MSG* sendbuf);
 MSG signin(int sockfd, MSG* sendbuf);
-//MSG inquire(int sockfd, MSG* sendbuf, );
+MSG inquire(int sockfd, MSG* sendbuf);
 //MSG history(int sockfd, MSG* sendbuf, );
 void quit(int sockfd, MSG* sendbuf);
 void list(int order);
+void sublist(int sockfd, MSG* sendbuf, MSG* recvbuf);
+void progend(int sockfd);
 
 int main(int argc, char* argv[])
 {
@@ -36,6 +38,8 @@ int main(int argc, char* argv[])
     
     MSG sendbuf, recvbuf;
     while(1){
+	memset(&recvbuf, 0, sizeof(MSG));
+	memset(&sendbuf, 0, sizeof(MSG));
 	list(1);
 	int cmd = -1;
 	scanf("%d", &cmd);
@@ -50,52 +54,49 @@ int main(int argc, char* argv[])
 		recvbuf = signin(sockfd, &sendbuf);
 		if(recvbuf.type == VFOK){
 		    puts("log in success, welcome");
-		    goto scdrylist;
+		    goto secondary;
 		}else puts("information error, try again");
 		break;
 	    case 3:
 		quit(sockfd, &sendbuf);
 		sleep(1);
-		goto end;
+		progend(sockfd);
 		break;
 	    default :
 		puts("Invalide cmd");
 	}
     }
-
-scdrylist:
+secondary:
     while(1){
-	int cmd = -1;
-	list(2);
-	scanf("%d", &cmd);
-	switch(cmd){
-	    case 1:
-		/*recvbuf = inquire(sockfd, &sendbuf);
-		if(recvbuf.type == VDOF){
-		    printf("%s: %s\n", recvbuf.name, recvbuf.data);
-		}else printf("There is no word: %s\n", recvbuf.name);
-		*/
-		break;
-	    case 2:
-		//recvbuf = history(sockfd, &sendbuf);
-
-		break;
-	    case 3:
-		quit(sockfd, &sendbuf);
-		goto end;
-		break;
-	    case 4:
-		goto list1;
-	    default :
-		puts("Invalide emd");
+        memset(&recvbuf, 0, sizeof(MSG));
+        memset(&sendbuf, 0, sizeof(MSG));
+        int cmd2 = -1;
+        list(2);
+        scanf("%d", &cmd2);
+	if(cmd2 == 4){  //返回上级菜单
+	    
 	}
-list1:
-	break;
+        switch(cmd2){
+            case 1:
+                recvbuf = inquire(sockfd, &sendbuf);
+                if(recvbuf.type == VFOK){
+                    printf("%s: %s\n", recvbuf.cmd, recvbuf.data);
+                }else if(recvbuf.type == EROR){
+		    printf("faild to inquire: %s\n", recvbuf.cmd);
+		}else printf("exist to inquire\n");
+                break;
+            case 2:
+                //recvbuf = history(sockfd, &sendbuf);
+
+                break;
+            case 3:
+                quit(sockfd, &sendbuf);
+                progend(sockfd);
+            default :
+                puts("Invalide cmd");
+        }
     }
 
-end:
-    sleep(1);
-    close(sockfd);
     return 0;
 
 }
@@ -109,7 +110,7 @@ void list(int order){
     }else if(order == 2){
 	puts("               secondary list                ");
 	puts("*********************************************");
-	puts("* 1.inquire  2.history  3.quit  4:last list *");
+	puts("* 1.inquire  2.history  3.quit  #:last list *");
 	puts("*********************************************");
     }
 }
@@ -155,11 +156,33 @@ MSG signin(int sockfd, MSG* sendbuf){
     }
     return retbuf;
 }
-/*
-MSG inquire(int sockfd, MSG* sendbuf, ){
 
+MSG inquire(int sockfd, MSG* sendbuf){
+    MSG retbuf;
+    retbuf.type = VFOK;
+    sendbuf->type = INQY;
+    while(1){
+	printf("Inquire the word: ");
+	scanf("%s",  sendbuf->cmd);
+	if( strncmp(sendbuf->cmd, "#", 1) == 0){
+	    retbuf.type = QUIT;
+	    return retbuf;
+	}
+	if( send(sockfd, sendbuf, sizeof(MSG), 0) == -1){
+	    perror("send");
+	    retbuf.type = EROR;
+	    return retbuf;
+	}
+	if(recv(sockfd, &retbuf, sizeof(MSG), 0) == -1){
+	    perror("recv");
+	    retbuf.type = EROR;
+	    return retbuf;
+	}
+	return retbuf;
+    }
+    return retbuf;
 }
-
+/*
 MSG history(int sockfd, MSG* sendbuf, ){
 
 }
@@ -167,4 +190,9 @@ MSG history(int sockfd, MSG* sendbuf, ){
 void quit(int sockfd, MSG* sendbuf){
     send(sockfd, sendbuf, sizeof(MSG), 0);
     printf("waitting to quit ...\n");
+}
+void progend(int sockfd){
+    sleep(1);
+    close(sockfd);
+    exit(0);
 }

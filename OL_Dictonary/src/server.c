@@ -2,6 +2,7 @@
 #include <sqlite3.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <time.h>
 
 #define DATABASE "../user_db/userinfo.db"
 
@@ -15,7 +16,7 @@ void childhandler(int signo){
     }
 }
 
-MSG regester(int fd, MSG* recvbuf, sqlite3* db){
+MSG regester(MSG* recvbuf, sqlite3* db){
     MSG retbuf;
     char *errmsg;
     char sqlcmd[512];
@@ -30,7 +31,7 @@ MSG regester(int fd, MSG* recvbuf, sqlite3* db){
     }
     return retbuf;
 }
-MSG login(int fd, MSG* recvbuf, sqlite3* db){
+MSG login(MSG* recvbuf, sqlite3* db){
     MSG retbuf;
     char *errmsg;
     char **presult;
@@ -51,12 +52,59 @@ MSG login(int fd, MSG* recvbuf, sqlite3* db){
 
 
 }
-MSG inquire(int fd, MSG* recvbuf, sqlite3* db){
 
-
-
+void get_date(char* date){
+    time_t t;
+    struct tm *tp;
+    time(&t);
+    tp = localtime(&t);
+    sprintf(date, "%d-%d-%d %d:%d:%d", tp->tm_year+1900, tp->tm_mon+1, tp->tm_mday, tp->tm_hour, tp->tm_min, tp->tm_sec);
 }
-MSG history(int fd, MSG* recvbuf, sqlite3* db){
+
+void inquire(MSG* recvbuf, sqlite3* db){
+    recvbuf->type = VFOK;
+    char *errmsg;
+    char word[64], date[128], sql[128];
+    strncpy(word, recvbuf->cmd, strlen(recvbuf->cmd) + 1);
+    search_word(recvbuf, word);
+    if(recvbuf->type == VFOK){
+	get_date(date);
+	sprintf(sql, "insert into history ('%s' '%s' '%s')", recvbuf->name, date, recvbuf->cmd);
+	printf("%s\n", sql);
+	if(sqlite3_exec(db, sql, NULL, NULL, &errmsg) != SQLITE_OK){
+	    printf("%s\n", errmsg);
+	    exit(0);
+	}
+    }
+}
+
+void search_word(MSG *recvbuf, char *word){
+    char temp[512];
+    char *pret = NULL;
+    FILE *fp = fopen("/root/myGit/OL_Dictonary/dict.txt", "r");
+    if(fp == NULL){
+	perror("fopen");
+	exit(0);
+    }
+    int flag = 0;
+    int len = strlen(word);
+    while(fgets(temp, 512, fp) != NULL){
+	flag = strncmp(temp, word, len);
+	if(flag > 0)
+	    continue;
+	else if(flag < 0 || temp[len] != ' '){
+	    recvbuf->type = EROR;
+	    break;
+	}
+	pret = temp + len;
+	while(*pret == ' ')
+	    ++pret;
+	strcpy(recvbuf->data, pret);
+    }
+    fclose(fp);
+}
+
+MSG history(MSG* recvbuf, sqlite3* db){
 
 
     
@@ -66,20 +114,22 @@ MSG history(int fd, MSG* recvbuf, sqlite3* db){
 void clnhandler(int fd, sqlite3* db){
     MSG recvbuf, sendbuf;
     while(1){
+	memset(&recvbuf, 0, sizeof(MSG));
+	memset(&sendbuf, 0, sizeof(MSG));
 	if(recv(fd, &recvbuf, sizeof(recvbuf), 0) == -1){
 	    perror("recv");
 	    continue;
 	}
 	switch(recvbuf.type){
 	    case REGE:
-		sendbuf = regester(fd, &recvbuf, db);
+		sendbuf = regester(&recvbuf, db);
 		if(send(fd, &sendbuf, sizeof(MSG), 0) == -1){
 		    perror("send");
 		    exit(0);
 		}
 		break;
 	    case LGIN:
-		sendbuf = login(fd, &recvbuf, db);
+		sendbuf = login(&recvbuf, db);
 		if(send(fd, &sendbuf, sizeof(MSG), 0) == -1){
 		    perror("send");
 		    exit(0);
@@ -90,7 +140,11 @@ void clnhandler(int fd, sqlite3* db){
 		exit(0);
 		break;
 	    case INQY:
-		//比对单词表
+		inquire(&recvbuf, db);
+		if(send(fd, &recvbuf, sizeof(MSG), 0) == -1){
+		    perror("send");
+		    exit(0);
+		}
 		break;
 	    case HSTY:
 		//历史记录输出

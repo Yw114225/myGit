@@ -23,7 +23,8 @@
 typedef struct message{
     int type;
     char name[32];
-    char data[BUFSIZE];
+    char cmd[32];
+    char data[512];
 }MSG;
 
 //
