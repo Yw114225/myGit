@@ -3,7 +3,7 @@
 MSG regester(int sockfd, MSG* sendbuf);
 MSG signin(int sockfd, MSG* sendbuf);
 MSG inquire(int sockfd, MSG* sendbuf);
-//MSG history(int sockfd, MSG* sendbuf, );
+int history(int sockfd, MSG* sendbuf);
 void quit(int sockfd, MSG* sendbuf);
 void list(int order);
 void sublist(int sockfd, MSG* sendbuf, MSG* recvbuf);
@@ -38,11 +38,10 @@ int main(int argc, char* argv[])
     
     MSG sendbuf, recvbuf;
     while(1){
-	memset(&recvbuf, 0, sizeof(MSG));
-	memset(&sendbuf, 0, sizeof(MSG));
 	list(1);
 	int cmd = -1;
 	scanf("%d", &cmd);
+	getchar();
 	switch(cmd){
 	    case 1:
 		recvbuf = regester(sockfd, &sendbuf);
@@ -68,26 +67,26 @@ int main(int argc, char* argv[])
     }
 secondary:
     while(1){
-        memset(&recvbuf, 0, sizeof(MSG));
-        memset(&sendbuf, 0, sizeof(MSG));
         int cmd2 = -1;
         list(2);
         scanf("%d", &cmd2);
-	if(cmd2 == 4){  //返回上级菜单
-	    
-	}
+	getchar();
         switch(cmd2){
             case 1:
-                recvbuf = inquire(sockfd, &sendbuf);
-                if(recvbuf.type == VFOK){
-                    printf("%s: %s\n", recvbuf.cmd, recvbuf.data);
-                }else if(recvbuf.type == EROR){
-		    printf("faild to inquire: %s\n", recvbuf.cmd);
-		}else printf("exist to inquire\n");
-                break;
+		while(1){
+		    recvbuf = inquire(sockfd, &sendbuf);
+		    if(recvbuf.type == VFOK){
+			printf("%s: %s\n", recvbuf.cmd, recvbuf.data);
+		    }else if(recvbuf.type == EROR){
+			printf("faild to inquire: %s\n", recvbuf.cmd);
+		    }else if(recvbuf.type == QUIT){
+			printf("exist to inquire\n");
+			break;
+		    }
+		}
+		break;
             case 2:
-                //recvbuf = history(sockfd, &sendbuf);
-
+                history(sockfd, &sendbuf);
                 break;
             case 3:
                 quit(sockfd, &sendbuf);
@@ -110,7 +109,7 @@ void list(int order){
     }else if(order == 2){
 	puts("               secondary list                ");
 	puts("*********************************************");
-	puts("* 1.inquire  2.history  3.quit  #:last list *");
+	puts("* 1.inquire         2.history        3.quit *");
 	puts("*********************************************");
     }
 }
@@ -161,32 +160,48 @@ MSG inquire(int sockfd, MSG* sendbuf){
     MSG retbuf;
     retbuf.type = VFOK;
     sendbuf->type = INQY;
-    while(1){
-	printf("Inquire the word: ");
-	scanf("%s",  sendbuf->cmd);
-	if( strncmp(sendbuf->cmd, "#", 1) == 0){
-	    retbuf.type = QUIT;
-	    return retbuf;
-	}
-	if( send(sockfd, sendbuf, sizeof(MSG), 0) == -1){
-	    perror("send");
-	    retbuf.type = EROR;
-	    return retbuf;
-	}
-	if(recv(sockfd, &retbuf, sizeof(MSG), 0) == -1){
-	    perror("recv");
-	    retbuf.type = EROR;
-	    return retbuf;
-	}
+    printf("Inquire the word: ");
+    scanf("%s",  sendbuf->cmd);
+    getchar();
+    if( strncmp(sendbuf->cmd, "#", 2) == 0){
+	retbuf.type = QUIT;
+	return retbuf;
+    }
+    if( send(sockfd, sendbuf, sizeof(MSG), 0) == -1){
+	perror("send");
+	retbuf.type = EROR;
+	return retbuf;
+    }
+    if(recv(sockfd, &retbuf, sizeof(MSG), 0) == -1){
+	perror("recv");
+	retbuf.type = EROR;
 	return retbuf;
     }
     return retbuf;
+    
 }
-/*
-MSG history(int sockfd, MSG* sendbuf, ){
 
+int history(int sockfd, MSG* sendbuf){
+    MSG recvbuf;
+    recvbuf.type = VFOK;
+    sendbuf->type = HSTY;
+    if(send(sockfd, sendbuf, sizeof(MSG), 0) < 0){
+	perror("client send");	
+	return -1;
+    }
+    if(recv(sockfd, &recvbuf, sizeof(MSG), 0) < 0){
+	perror("fail to recv");
+	return -1;
+    }
+    if(recvbuf.type == EROR){
+	printf("failed to got history");
+	return -1;
+    }else if(recvbuf.type == VFOK){
+	printf("%s\n", recvbuf.data);
+    }
+    return 0;
 }
-*/
+
 void quit(int sockfd, MSG* sendbuf){
     send(sockfd, sendbuf, sizeof(MSG), 0);
     printf("waitting to quit ...\n");

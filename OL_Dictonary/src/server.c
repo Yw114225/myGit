@@ -63,22 +63,28 @@ void get_date(char* date){
 
 void inquire(MSG* recvbuf, sqlite3* db){
     recvbuf->type = VFOK;
+    int result = -1;
     char *errmsg;
     char word[64], date[128], sql[128];
     strncpy(word, recvbuf->cmd, strlen(recvbuf->cmd) + 1);
-    search_word(recvbuf, word);
-    if(recvbuf->type == VFOK){
+    printf("waitting...\n");
+    result = search_word(recvbuf, word);
+    printf("result %d cmd %s name %s\n", result, recvbuf->cmd, recvbuf->name);
+    if(result == 1){
 	get_date(date);
-	sprintf(sql, "insert into history ('%s' '%s' '%s')", recvbuf->name, date, recvbuf->cmd);
-	printf("%s\n", sql);
+	sprintf(sql, "insert into history values ('%s','%s','%s');", recvbuf->name, date, recvbuf->cmd);
 	if(sqlite3_exec(db, sql, NULL, NULL, &errmsg) != SQLITE_OK){
-	    printf("%s\n", errmsg);
+	    printf("sql_exrc_err: %s\n", errmsg);
 	    exit(0);
-	}
+	}else printf("%s\n", sql);
+    }else {
+	recvbuf->type = EROR;
+	printf("failed to search %s\n", recvbuf->cmd);
+
     }
 }
 
-void search_word(MSG *recvbuf, char *word){
+int search_word(MSG *recvbuf, char *word){
     char temp[512];
     char *pret = NULL;
     FILE *fp = fopen("/root/myGit/OL_Dictonary/dict.txt", "r");
@@ -90,24 +96,50 @@ void search_word(MSG *recvbuf, char *word){
     int len = strlen(word);
     while(fgets(temp, 512, fp) != NULL){
 	flag = strncmp(temp, word, len);
-	if(flag > 0)
+	if(flag < 0)
 	    continue;
-	else if(flag < 0 || temp[len] != ' '){
-	    recvbuf->type = EROR;
+	else if(flag > 0 || ((flag == 0) && (temp[len] != ' '))){
+	    printf("flag %d, temp %s", flag, temp[len]);
 	    break;
 	}
 	pret = temp + len;
 	while(*pret == ' ')
 	    ++pret;
+	printf("found %s\n", recvbuf->cmd);
 	strcpy(recvbuf->data, pret);
+	fclose(fp);
+	return 1;
     }
     fclose(fp);
+    return 0;
 }
 
-MSG history(MSG* recvbuf, sqlite3* db){
+int history_callback(void *para, int f_num, char** f_value, char** f_name){
+    MSG htry;
+    htry.type = VFOK;
+    int acceptfd = *(int *)para;
+    //history::    name    date    word
+    sprintf(htry.data, "'%s': '%s'", f_value[1], f_value[2]);
+    send(acceptfd, &htry, sizeof(MSG), 0);
+}
 
-
+void history(MSG* recvbuf, sqlite3* db, int acceptfd){
+    printf("waitting...\n");
+    MSG sendbuf;
+    sendbuf.type = EROR;
+    char sql[128] = {0};
+    char *errmsg;
+    sprintf(sql, "select * from history where name = '%s' ", recvbuf->name);
     
+    if(sqlite3_exec(db, sql, history_callback, (void *)&acceptfd , &errmsg) != SQLITE_OK){
+	perror("server history");
+	send(acceptfd, &sendbuf, sizeof(MSG), 0);
+	return ;
+    }else {
+	printf("%s\n", sql);
+	printf("history record got!\n");
+    }
+    return ;
 }
 
 //客户端进程程序
@@ -147,7 +179,7 @@ void clnhandler(int fd, sqlite3* db){
 		}
 		break;
 	    case HSTY:
-		//历史记录输出
+		history(&recvbuf, db, fd);
 		break;
 	    default :
 		sendbuf.type = EROR;
